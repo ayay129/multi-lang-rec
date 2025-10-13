@@ -1,0 +1,10 @@
+detection:
+  model_name: PP-OCRv3_mobile_det
+recognition:
+  fr:
+    model_name: latin_PP-OCRv5_mobile_rec
+  en:
+    model_name: en_PP-OCRv5_mobile_rec
+  ar:
+    model_name: arabic_PP-OCRv3_mobile_rec
+model_dir: models
