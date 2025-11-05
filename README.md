@@ -1,3 +1,4 @@
+<<<<<<< README.md
 # 多语言OCR FastAPI服务
 
 **语言:** **中文** | [English](README_EN.md) | [العربية](README_AR.md)
@@ -248,3 +249,4 @@ CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "80", "--worker
 - 可以调整置信度融合算法
 - 支持自定义检测和识别模型
 - 易于集成到现有的文档处理流程中
+=======
