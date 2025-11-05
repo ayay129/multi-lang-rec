@@ -1,0 +1,7 @@
+FROM ccr-2vdh3abv-pub.cnc.bj.baidubce.com/device/paddle-npu:cann800-ubuntu20-npu-310p-base-aarch64-gcc84
+COPY . /workspace
+WORKDIR /workspace
+RUN apt-get update && apt-get install -y libgl1 && \
+    apt-get install -y libglib2.0-0 && \
+    pip install -r requirements.txt
+CMD ["python","api_server.py"]
