@@ -37,10 +37,6 @@ logs/
 **/.cache/
 **/_tmp/
 **/.tmp/
-# ONNX 转换输出（统一忽略）
-**/onnx/
-models/**/inference.onnx
-inference/**/inference.onnx
 
 # 临时文件
 *.tmp
