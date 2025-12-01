@@ -77,7 +77,8 @@ def convert_model(model_dir: Path, save_path: Path, model_filename: str, params_
         "--params_filename", params_filename,
         "--save_file", str(save_path),
         # Optional flags you may want to tune:
-        # "--opset_version", "10",
+        # 低于7 atc无法编译，默认11
+        "--opset_version", "11"
         # "--enable_onnx_checker", "True",
     ]
     logger.info(f"执行命令: {' '.join(cmd)}")
