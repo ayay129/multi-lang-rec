@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Convert all Paddle models under `models/` to ONNX using paddle2onnx.
+使用 paddle2onnx 批量将 `models/` 目录下的 Paddle 模型转换为 ONNX。
 
-Usage:
-  python convert_models_to_onnx.py [--models_dir /abs/path/to/models] [--force]
+用法：
+  python convert_models_to_onnx.py [--models_dir 绝对路径到models目录] [--force]
 
-- By default, scans `./models` relative to this script.
-- Creates `onnx/model.onnx` inside each model directory.
-- Determines model/params filenames automatically (prefers `.json` as per user's example).
+说明：
+- 默认扫描脚本所在目录下的 `./models`。
+- 自动识别模型文件与参数文件（优先使用 `.json` 与 `.pdiparams`）。
 """
 import os
 import sys
@@ -80,30 +80,30 @@ def convert_model(model_dir: Path, save_path: Path, model_filename: str, params_
         # "--opset_version", "10",
         # "--enable_onnx_checker", "True",
     ]
-    logger.info(f"Executing: {' '.join(cmd)}")
+    logger.info(f"执行命令: {' '.join(cmd)}")
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if proc.returncode == 0:
-        logger.info(f"Success → {save_path}")
+        logger.info(f"转换成功 → {save_path}")
         return True
     else:
-        logger.error(f"Failed converting {model_dir.name}\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}")
+        logger.error(f"转换失败: {model_dir.name}\n标准输出:\n{proc.stdout}\n标准错误:\n{proc.stderr}")
         return False
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Convert Paddle models under models/ to ONNX using paddle2onnx")
-    parser.add_argument("--models_dir", type=str, default=str(Path(__file__).resolve().parent / "models"), help="Path to models directory")
-    parser.add_argument("--force", action="store_true", help="Overwrite existing ONNX models if present")
+    parser = argparse.ArgumentParser(description="使用 paddle2onnx 将 models/ 下的 Paddle 模型转换为 ONNX")
+    parser.add_argument("--models_dir", type=str, default=str(Path(__file__).resolve().parent / "models"), help="模型目录的路径")
+    parser.add_argument("--force", action="store_true", help="若已存在 ONNX 文件则覆盖")
     args = parser.parse_args()
 
     models_dir = Path(args.models_dir).resolve()
     if not models_dir.exists() or not models_dir.is_dir():
-        logger.error(f"Models directory not found: {models_dir}")
+        logger.error(f"未找到模型目录: {models_dir}")
         sys.exit(1)
 
     if not ensure_paddle2onnx_available():
-        logger.error("paddle2onnx not found. Install with: pip install paddle2onnx")
+        logger.error("未找到 paddle2onnx，请先安装: pip install paddle2onnx")
         sys.exit(1)
 
     # Iterate subdirectories
@@ -117,28 +117,25 @@ def main():
             continue
         # skip some directories that are not paddle models
         if child.name.lower() in {"torch"}:
-            logger.info(f"Skip non-Paddle dir: {child.name}")
+            logger.info(f"跳过非 Paddle 目录: {child.name}")
             continue
 
-        # Check files
+        # 检查模型文件
         found = find_model_files(child)
         if not found:
-            logger.info(f"No model files found in {child.name} (expected one of {MODEL_CANDIDATES} and {PARAMS_CANDIDATES})")
+            logger.info(f"目录 {child.name} 中未找到模型文件（应存在 {MODEL_CANDIDATES} 与 {PARAMS_CANDIDATES} 之一）")
             continue
 
         model_filename, params_filename = found
         count_total += 1
 
-        # Prepare output path: <model_dir>/onnx/model.onnx
-        onnx_dir = child / "onnx"
-        onnx_dir.mkdir(exist_ok=True)
-        save_path = onnx_dir / "model.onnx"
+        # 输出路径：<model_dir>/inference.onnx（不创建 onnx 子目录）
+        save_path = child / "inference.onnx"
 
         if save_path.exists() and not args.force:
-            logger.info(f"ONNX already exists, skip: {save_path} (use --force to overwrite)")
+            logger.info(f"ONNX 已存在，跳过: {save_path}（使用 --force 可覆盖）")
             count_skipped += 1
             continue
-        import pdb;pdb.set_trace()
 
         ok = convert_model(child, save_path, model_filename, params_filename)
         if ok:
@@ -147,11 +144,11 @@ def main():
             count_failed += 1
 
     logger.info("=" * 60)
-    logger.info(f"Scan dir: {models_dir}")
-    logger.info(f"Total candidates: {count_total}")
-    logger.info(f"Converted: {count_converted}")
-    logger.info(f"Skipped: {count_skipped}")
-    logger.info(f"Failed: {count_failed}")
+    logger.info(f"扫描目录: {models_dir}")
+    logger.info(f"候选模型总数: {count_total}")
+    logger.info(f"成功转换: {count_converted}")
+    logger.info(f"已跳过: {count_skipped}")
+    logger.info(f"失败数量: {count_failed}")
 
     # Exit code semantics
     if count_failed > 0:

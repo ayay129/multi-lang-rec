@@ -1,0 +1,48 @@
+# 操作系统与编辑器
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+.ipynb_checkpoints/
+
+# Python 编译与缓存
+__pycache__/
+*.py[cod]
+*.so
+
+# 虚拟环境与依赖产物
+.venv/
+venv/
+env/
+.Python
+pip-wheel-metadata/
+
+# 构建与打包
+build/
+dist/
+*.egg-info/
+
+# 测试与覆盖率
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# 日志
+logs/
+*.log
+
+# 模型相关缓存与转换产物
+**/.cache/
+**/_tmp/
+**/.tmp/
+# ONNX 转换输出（统一忽略）
+**/onnx/
+models/**/inference.onnx
+inference/**/inference.onnx
+
+# 临时文件
+*.tmp
+*.temp
+~*
