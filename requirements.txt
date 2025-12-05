@@ -24,13 +24,11 @@ imagesize==1.4.1
 modelscope==1.30.0
 networkx==3.4.2
 numpy==1.24.3
-opencv-contrib-python==4.10.0.84
-opencv-python==4.12.0.88
 opt-einsum==3.3.0
 packaging==25.0
 paddleocr==3.2.0
 paddlepaddle==3.2.0
-paddlex==3.2.1
+paddlex==3.2.0
 pandas==2.3.3
 Pillow==10.1.0
 prettytable==3.16.0
@@ -46,7 +44,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 python-multipart==0.0.6
 pytz==2025.2
-PyYAML==6.0.1
+PyYAML==6.0.2
 requests==2.32.5
 ruamel.yaml==0.18.15
 ruamel.yaml.clib==0.2.14
