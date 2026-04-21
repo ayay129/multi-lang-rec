@@ -1,7 +1,12 @@
 FROM ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddle:3.2.0-gpu-cuda11.8-cudnn8.9
 COPY . /workspace
 WORKDIR /workspace
-RUN apt-get update && apt-get install -y libgl1 && \
-    apt-get install -y libglib2.0-0 && \
-    pip install -r requirements.txt
+RUN grep -v '^paddlepaddle==' requirements.txt > /tmp/requirements-docker.txt && \
+    apt-get -o Acquire::AllowInsecureRepositories=true \
+            -o Acquire::AllowDowngradeToInsecureRepositories=true update && \
+    apt-get install -y --no-install-recommends --allow-unauthenticated \
+        libgl1 \
+        libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/* && \
+    python -m pip install --no-cache-dir -r /tmp/requirements-docker.txt
 CMD ["python","api_server.py"]
