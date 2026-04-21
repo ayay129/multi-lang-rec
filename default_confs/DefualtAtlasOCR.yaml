@@ -1,0 +1,41 @@
+SubPipelines:
+  DocPreprocessor:
+    pipeline_name: doc_preprocessor
+    use_doc_orientation_classify: False
+    use_doc_unwarping: False
+    SubModules:
+      DocOrientationClassify:
+        module_name: doc_text_orientation
+        model_name: PP-LCNet_x1_0_doc_ori
+        model_dir: null
+      DocUnwarping:
+        module_name: image_unwarping
+        model_name: UVDoc
+        model_dir: null
+SubModules:
+  TextDetection:
+    module_name: text_detection
+    model_name: PP-OCRv3_mobile_det
+    model_dir: models/PP-OCRv3_mobile_det
+    limit_side_len: 960
+    limit_type: max
+    max_side_limit: 4000
+    thresh: 0.3
+    box_thresh: 0.6
+    unclip_ratio: 1.5
+  TextLineOrientation:
+    module_name: textline_orientation
+    model_name: PP-LCNet_x1_0_textline_ori
+    model_dir:  null
+    batch_size: 6
+  TextRecognition:
+    module_name: text_recognition
+    model_name: en_PP-OCRv5_mobile_rec
+    model_dir: models/en_PP-OCRv5_mobile_rec
+    batch_size: 1
+    score_thresh: 0.0
+    #input_shape: [3, 48, 160]  #input_shape: [3,640,480]
+pipeline_name: OCR
+text_type: general
+use_doc_preprocessor: false
+use_textline_orientation: false pip 
