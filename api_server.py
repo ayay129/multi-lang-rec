@@ -140,12 +140,14 @@ def _analyze_text(text: str) -> dict:
 
     dominant_script_ratio = dominant_script_count / letter_count if letter_count else 0.0
     punctuation_ratio = punctuation_count / max(len(compact_text), 1)
+    effective_len = alnum_count
 
     return {
         "compact_text": compact_text,
         "alnum_count": alnum_count,
         "letter_count": letter_count,
         "digit_count": digit_count,
+        "effective_len": effective_len,
         "punctuation_count": punctuation_count,
         "punctuation_ratio": punctuation_ratio,
         "script_counts": script_counts,
@@ -154,11 +156,160 @@ def _analyze_text(text: str) -> dict:
     }
 
 
-def _bbox_width(bbox) -> float:
-    if not bbox or len(bbox) < 4:
-        return 0.0
-    xs = [point[0] for point in bbox if isinstance(point, (list, tuple)) and len(point) >= 2]
-    return float(max(xs) - min(xs)) if xs else 0.0
+def _bbox_dimensions(bbox) -> tuple[float, float]:
+    if bbox is None:
+        return 0.0, 0.0
+
+    try:
+        if len(bbox) == 0:
+            return 0.0, 0.0
+    except TypeError:
+        return 0.0, 0.0
+
+    if (
+        isinstance(bbox, (list, tuple))
+        and len(bbox) == 4
+        and all(isinstance(value, (int, float)) for value in bbox)
+    ):
+        x1, y1, x2, y2 = bbox
+        return float(abs(x2 - x1)), float(abs(y2 - y1))
+
+    if isinstance(bbox, (list, tuple)):
+        points = [
+            point for point in bbox
+            if isinstance(point, (list, tuple)) and len(point) >= 2
+        ]
+        if points:
+            xs = [point[0] for point in points]
+            ys = [point[1] for point in points]
+            return float(max(xs) - min(xs)), float(max(ys) - min(ys))
+
+    return 0.0, 0.0
+
+
+def _bbox_bounds(bbox) -> tuple[float, float, float, float]:
+    if bbox is None:
+        return 0.0, 0.0, 0.0, 0.0
+
+    try:
+        if len(bbox) == 0:
+            return 0.0, 0.0, 0.0, 0.0
+    except TypeError:
+        return 0.0, 0.0, 0.0, 0.0
+
+    if (
+        isinstance(bbox, (list, tuple))
+        and len(bbox) == 4
+        and all(isinstance(value, (int, float)) for value in bbox)
+    ):
+        x1, y1, x2, y2 = bbox
+        left, right = sorted((float(x1), float(x2)))
+        top, bottom = sorted((float(y1), float(y2)))
+        return left, top, right, bottom
+
+    if isinstance(bbox, (list, tuple)):
+        points = [
+            point for point in bbox
+            if isinstance(point, (list, tuple)) and len(point) >= 2
+        ]
+        if points:
+            xs = [float(point[0]) for point in points]
+            ys = [float(point[1]) for point in points]
+            return min(xs), min(ys), max(xs), max(ys)
+
+    return 0.0, 0.0, 0.0, 0.0
+
+
+def sort_blocks_in_reading_order(blocks: list[dict]) -> tuple[list[dict], list[int]]:
+    if not blocks:
+        return [], []
+
+    enriched_blocks = []
+    for index, block in enumerate(blocks):
+        left, top, right, bottom = _bbox_bounds(block.get("bbox"))
+        height = max(bottom - top, 1.0)
+        enriched_blocks.append({
+            **block,
+            "_raw_index": index,
+            "_left": left,
+            "_top": top,
+            "_right": right,
+            "_bottom": bottom,
+            "_height": height,
+            "_center_y": top + height / 2.0,
+        })
+
+    enriched_blocks.sort(key=lambda item: (item["_top"], item["_left"]))
+
+    rows = []
+    for block in enriched_blocks:
+        placed = False
+        for row in rows:
+            row_height = max(row["bottom"] - row["top"], 1.0)
+            center_threshold = max(block["_height"], row_height) * 0.6
+            overlap = min(row["bottom"], block["_bottom"]) - max(row["top"], block["_top"])
+            if (
+                abs(block["_center_y"] - row["center_y"]) <= center_threshold
+                or overlap >= min(block["_height"], row_height) * 0.3
+            ):
+                row["items"].append(block)
+                row["top"] = min(row["top"], block["_top"])
+                row["bottom"] = max(row["bottom"], block["_bottom"])
+                row["center_y"] = sum(item["_center_y"] for item in row["items"]) / len(row["items"])
+                placed = True
+                break
+        if not placed:
+            rows.append({
+                "items": [block],
+                "top": block["_top"],
+                "bottom": block["_bottom"],
+                "center_y": block["_center_y"],
+            })
+
+    rows.sort(key=lambda row: row["top"])
+    ordered_blocks = []
+    reading_order_indices = []
+
+    for row in rows:
+        row["items"].sort(key=lambda item: (item["_left"], item["_top"]))
+        for item in row["items"]:
+            ordered_blocks.append({
+                key: value
+                for key, value in item.items()
+                if not key.startswith("_")
+            })
+            reading_order_indices.append(item["_raw_index"])
+
+    return ordered_blocks, reading_order_indices
+
+
+def _extract_result_boxes(result_item) -> list:
+    if "dt_polys" in result_item and result_item["dt_polys"] is not None:
+        dt_polys = result_item["dt_polys"]
+        return _to_json_safe(dt_polys.tolist() if hasattr(dt_polys, "tolist") else list(dt_polys))
+
+    if "rec_boxes" in result_item and result_item["rec_boxes"] is not None:
+        rec_boxes = result_item["rec_boxes"]
+        return _to_json_safe(rec_boxes.tolist() if hasattr(rec_boxes, "tolist") else list(rec_boxes))
+
+    return []
+
+
+def _to_json_safe(value):
+    if hasattr(value, "tolist"):
+        return value.tolist()
+    if isinstance(value, dict):
+        return {key: _to_json_safe(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_to_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_to_json_safe(item) for item in value]
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            pass
+    return value
 
 
 def _get_group_dominant_script(candidates: list) -> Optional[str]:
@@ -177,23 +328,23 @@ def _get_group_dominant_script(candidates: list) -> Optional[str]:
     return dominant_script
 
 
-def _get_trusted_native_script(candidates: list) -> Optional[str]:
+def _get_trusted_non_latin_script(candidates: list) -> Optional[str]:
     trusted_script = None
     trusted_weight = 0.0
 
     for candidate in candidates:
         analysis = candidate["analysis"]
-        language_script = LANGUAGE_SCRIPT_MAP.get(candidate["language"])
         candidate_script = analysis["dominant_script"]
+        language_script = LANGUAGE_SCRIPT_MAP.get(candidate["language"])
 
-        if not language_script or language_script == "latin":
+        if candidate_script not in {"cyrillic", "arabic", "cjk"}:
             continue
-        if analysis["letter_count"] < 6 or analysis["dominant_script_ratio"] < 0.6:
+        if language_script != candidate_script:
             continue
-        if candidate_script != language_script:
+        if analysis["letter_count"] < 6 or analysis["dominant_script_ratio"] < 0.55:
             continue
 
-        weight = float(candidate["score"]) * analysis["letter_count"] * analysis["dominant_script_ratio"]
+        weight = float(candidate["score"]) * analysis["effective_len"]
         if weight > trusted_weight:
             trusted_script = candidate_script
             trusted_weight = weight
@@ -205,65 +356,81 @@ def _compute_adjusted_score(
     candidate: dict,
     candidates: list,
     group_dominant_script: Optional[str],
-    trusted_native_script: Optional[str],
+    trusted_non_latin_script: Optional[str],
 ) -> float:
     analysis = candidate["analysis"]
     score = float(candidate["score"])
-    alnum_count = analysis["alnum_count"]
+    effective_len = analysis["effective_len"]
     punctuation_ratio = analysis["punctuation_ratio"]
-    bbox_width = _bbox_width(candidate["bbox"])
-    max_peer_alnum = max(item["analysis"]["alnum_count"] for item in candidates)
+    bbox_width, bbox_height = _bbox_dimensions(candidate["bbox"])
+    aspect_ratio = bbox_width / max(bbox_height, 1.0)
+    max_peer_len = max(item["analysis"]["effective_len"] for item in candidates)
+    max_peer_density = max(
+        item["analysis"]["effective_len"] / max(_bbox_dimensions(item["bbox"])[0], 1.0)
+        for item in candidates
+    )
+    relative_len_ratio = effective_len / max(max_peer_len, 1)
+    density = effective_len / max(bbox_width, 1.0)
 
-    len_factor = min(1.0, max(alnum_count, 1) / 8.0)
-    if alnum_count == 0:
-        len_factor *= 0.05
-    elif alnum_count <= 2:
-        len_factor *= 0.25
+    length_factor = 1.0
+    if effective_len == 0:
+        length_factor *= 0.03
+    elif max_peer_len >= 8 and effective_len <= 2:
+        length_factor *= 0.08
+    elif max_peer_len >= 8 and relative_len_ratio < 0.25:
+        length_factor *= 0.35
+    elif max_peer_len >= 5 and relative_len_ratio < 0.4:
+        length_factor *= 0.72
 
     info_factor = 1.0 - min(punctuation_ratio, 0.85) * 0.8
     if analysis["letter_count"] == 0 and analysis["digit_count"] == 0:
         info_factor *= 0.2
 
     coverage_factor = 1.0
-    if bbox_width >= 500 and alnum_count <= 4 and max_peer_alnum >= 8:
-        coverage_factor *= 0.25
-    elif bbox_width >= 300 and alnum_count <= 2 and max_peer_alnum >= 6:
-        coverage_factor *= 0.2
+    if bbox_width >= 500 and aspect_ratio >= 5 and effective_len <= 2 and max_peer_len >= 8:
+        coverage_factor *= 0.08
+    elif bbox_width >= 500 and aspect_ratio >= 5 and relative_len_ratio < 0.3:
+        coverage_factor *= 0.4
+    elif bbox_width >= 300 and aspect_ratio >= 4 and effective_len <= 2 and max_peer_len >= 6:
+        coverage_factor *= 0.15
 
-    if (
-        max_peer_alnum >= 8
-        and alnum_count <= 2
-        and punctuation_ratio >= 0.5
-    ):
+    if max_peer_density > 0 and bbox_width >= 300:
+        density_ratio = density / max_peer_density
+        if max_peer_len >= 8 and density_ratio < 0.2:
+            coverage_factor *= 0.25
+        elif max_peer_len >= 5 and density_ratio < 0.35:
+            coverage_factor *= 0.6
+
+    if max_peer_len >= 8 and effective_len <= 2 and punctuation_ratio >= 0.5:
         coverage_factor *= 0.1
 
     script_factor = 1.0
     candidate_script = analysis["dominant_script"]
-    if trusted_native_script and analysis["letter_count"] >= 3:
-        if candidate_script == trusted_native_script and analysis["dominant_script_ratio"] >= 0.5:
-            script_factor *= 1.35
-        elif candidate_script and candidate_script != trusted_native_script and analysis["letter_count"] >= 6:
-            script_factor *= 0.68
-
-    if group_dominant_script and analysis["letter_count"] >= 3:
+    if group_dominant_script and analysis["letter_count"] >= 6:
         if candidate_script == group_dominant_script and analysis["dominant_script_ratio"] >= 0.5:
-            script_factor *= 1.2
-        elif candidate_script and candidate_script != group_dominant_script:
-            script_factor *= 0.72
-
-    language_script = LANGUAGE_SCRIPT_MAP.get(candidate["language"])
-    if language_script and group_dominant_script and analysis["letter_count"] >= 3:
-        if language_script == group_dominant_script:
             script_factor *= 1.08
-        elif candidate_script and candidate_script != language_script:
+        elif candidate_script and candidate_script != group_dominant_script:
             script_factor *= 0.92
 
-    return score * len_factor * info_factor * coverage_factor * script_factor
+    language_script = LANGUAGE_SCRIPT_MAP.get(candidate["language"])
+    if language_script and analysis["letter_count"] >= 6:
+        if candidate_script == language_script and analysis["dominant_script_ratio"] >= 0.5:
+            script_factor *= 1.05
+        elif candidate_script and candidate_script != language_script:
+            script_factor *= 0.95
+
+    if trusted_non_latin_script and relative_len_ratio >= 0.6 and analysis["letter_count"] >= 6:
+        if candidate_script == trusted_non_latin_script and analysis["dominant_script_ratio"] >= 0.5:
+            script_factor *= 1.18
+        elif candidate_script and candidate_script != trusted_non_latin_script:
+            script_factor *= 0.88
+
+    return score * length_factor * info_factor * coverage_factor * script_factor
 
 
 def _select_best_candidate(candidates: list) -> dict:
     group_dominant_script = _get_group_dominant_script(candidates)
-    trusted_native_script = _get_trusted_native_script(candidates)
+    trusted_non_latin_script = _get_trusted_non_latin_script(candidates)
     best_candidate = None
     best_adjusted_score = -1.0
 
@@ -272,7 +439,7 @@ def _select_best_candidate(candidates: list) -> dict:
             candidate,
             candidates,
             group_dominant_script,
-            trusted_native_script,
+            trusted_non_latin_script,
         )
         if candidate["adjusted_score"] > best_adjusted_score:
             best_candidate = candidate
@@ -305,10 +472,7 @@ def find_best_words_from_groups(data_groups):
     # 找出所有组中词数量的最大值
     max_words = max(len(group.get("words_result", [])) for group in data_groups)
     
-    best_words = []
-    best_scores = []
-    best_languages = []
-    best_bboxes = []
+    best_blocks = []
     
     # 对每个词的位置进行比较
     for word_idx in range(max_words):
@@ -333,10 +497,20 @@ def find_best_words_from_groups(data_groups):
         
         if candidates:
             best_candidate = _select_best_candidate(candidates)
-            best_words.append(best_candidate["word"])
-            best_scores.append(best_candidate["score"])
-            best_languages.append(best_candidate["language"])
-            best_bboxes.append(best_candidate["bbox"])
+            best_blocks.append({
+                "word": best_candidate["word"],
+                "score": best_candidate["score"],
+                "language": best_candidate["language"],
+                "bbox": best_candidate["bbox"],
+            })
+
+    raw_best_words = [block["word"] for block in best_blocks]
+    ordered_blocks, reading_order_indices = sort_blocks_in_reading_order(best_blocks)
+    best_words = [block["word"] for block in ordered_blocks]
+    best_scores = [block["score"] for block in ordered_blocks]
+    best_languages = [block["language"] for block in ordered_blocks]
+    best_bboxes = [block["bbox"] for block in ordered_blocks]
+
     words_result = {} 
     for index, word in enumerate(best_words):
         words_result[index] = word
@@ -350,6 +524,8 @@ def find_best_words_from_groups(data_groups):
         "words_num": len(" ".join(best_words)),
         "best_scores": best_scores,
         "combined_text": " ".join(best_words),
+        "combined_text_raw": " ".join(raw_best_words),
+        "reading_order_indices": reading_order_indices,
         "average_confidence": sum(best_scores) / len(best_scores) if best_scores else 0
     }
 
@@ -404,11 +580,12 @@ async def ocr_upload_image(
         logger.info(f"所有异步OCR任务完成，总异步耗时: {async_total_time:.4f}秒")
         all_data = []
         for lang, res in results:
+            result_item = res[0]
             obj = {}
             obj["language"] = lang
-            obj["bbox"] =  res[0]["rec_boxes"].tolist() 
-            obj["words_result"]= res[0]["rec_texts"]
-            obj["scores"] = res[0]["rec_scores"]
+            obj["bbox"] = _extract_result_boxes(result_item)
+            obj["words_result"] = _to_json_safe(result_item["rec_texts"])
+            obj["scores"] = _to_json_safe(result_item["rec_scores"])
             all_data.append(obj)
         best_data = find_best_words_from_groups(all_data)
         #兼容旧格式
