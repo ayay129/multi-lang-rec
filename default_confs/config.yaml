@@ -9,4 +9,6 @@ recognition:
     model_name: arabic_PP-OCRv3_mobile_rec
   zh:
     model_name: PP-OCRv5_mobile_rec
+  ru:
+    model_name: cyrillic_PP-OCRv3_mobile_rec
 model_dir: models

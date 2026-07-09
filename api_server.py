@@ -1,7 +1,9 @@
 import asyncio
 import os
+import re
 import time
 import traceback
+import unicodedata
 from typing import List, Optional
 import tempfile
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -66,6 +68,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
+LANGUAGE_SCRIPT_MAP = {
+    "ar": "arabic",
+    "en": "latin",
+    "fr": "latin",
+    "ru": "cyrillic",
+    "zh": "cjk",
+}
+
 async def process_image_async(image_path: str, language: str):
     """异步处理单张图片"""
     try:
@@ -83,6 +93,201 @@ async def process_image_async(image_path: str, language: str):
     except Exception as e:
         logger.error(f"{language}语言模型识别失败，错误: {str(e)}")
         raise
+
+
+def _detect_char_script(char: str) -> Optional[str]:
+    code = ord(char)
+    if 0x0400 <= code <= 0x052F or 0x2DE0 <= code <= 0x2DFF or 0xA640 <= code <= 0xA69F:
+        return "cyrillic"
+    if 0x0600 <= code <= 0x06FF or 0x0750 <= code <= 0x077F or 0x08A0 <= code <= 0x08FF:
+        return "arabic"
+    if 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF:
+        return "cjk"
+    if char.isalpha():
+        try:
+            if "LATIN" in unicodedata.name(char):
+                return "latin"
+        except ValueError:
+            return None
+    return None
+
+
+def _analyze_text(text: str) -> dict:
+    compact_text = re.sub(r"\s+", "", text or "")
+    letter_count = 0
+    digit_count = 0
+    punctuation_count = 0
+    alnum_count = 0
+    script_counts = {}
+
+    for char in compact_text:
+        if char.isalpha():
+            letter_count += 1
+            alnum_count += 1
+            script = _detect_char_script(char)
+            if script:
+                script_counts[script] = script_counts.get(script, 0) + 1
+        elif char.isdigit():
+            digit_count += 1
+            alnum_count += 1
+        else:
+            punctuation_count += 1
+
+    dominant_script = None
+    dominant_script_count = 0
+    if script_counts:
+        dominant_script, dominant_script_count = max(script_counts.items(), key=lambda item: item[1])
+
+    dominant_script_ratio = dominant_script_count / letter_count if letter_count else 0.0
+    punctuation_ratio = punctuation_count / max(len(compact_text), 1)
+
+    return {
+        "compact_text": compact_text,
+        "alnum_count": alnum_count,
+        "letter_count": letter_count,
+        "digit_count": digit_count,
+        "punctuation_count": punctuation_count,
+        "punctuation_ratio": punctuation_ratio,
+        "script_counts": script_counts,
+        "dominant_script": dominant_script,
+        "dominant_script_ratio": dominant_script_ratio,
+    }
+
+
+def _bbox_width(bbox) -> float:
+    if not bbox or len(bbox) < 4:
+        return 0.0
+    xs = [point[0] for point in bbox if isinstance(point, (list, tuple)) and len(point) >= 2]
+    return float(max(xs) - min(xs)) if xs else 0.0
+
+
+def _get_group_dominant_script(candidates: list) -> Optional[str]:
+    aggregated = {}
+    for candidate in candidates:
+        if candidate["analysis"]["letter_count"] < 2:
+            continue
+        for script, count in candidate["analysis"]["script_counts"].items():
+            aggregated[script] = aggregated.get(script, 0) + count
+    if not aggregated:
+        return None
+    dominant_script, dominant_count = max(aggregated.items(), key=lambda item: item[1])
+    total_letters = sum(aggregated.values())
+    if total_letters == 0 or dominant_count / total_letters < 0.45:
+        return None
+    return dominant_script
+
+
+def _get_trusted_native_script(candidates: list) -> Optional[str]:
+    trusted_script = None
+    trusted_weight = 0.0
+
+    for candidate in candidates:
+        analysis = candidate["analysis"]
+        language_script = LANGUAGE_SCRIPT_MAP.get(candidate["language"])
+        candidate_script = analysis["dominant_script"]
+
+        if not language_script or language_script == "latin":
+            continue
+        if analysis["letter_count"] < 6 or analysis["dominant_script_ratio"] < 0.6:
+            continue
+        if candidate_script != language_script:
+            continue
+
+        weight = float(candidate["score"]) * analysis["letter_count"] * analysis["dominant_script_ratio"]
+        if weight > trusted_weight:
+            trusted_script = candidate_script
+            trusted_weight = weight
+
+    return trusted_script
+
+
+def _compute_adjusted_score(
+    candidate: dict,
+    candidates: list,
+    group_dominant_script: Optional[str],
+    trusted_native_script: Optional[str],
+) -> float:
+    analysis = candidate["analysis"]
+    score = float(candidate["score"])
+    alnum_count = analysis["alnum_count"]
+    punctuation_ratio = analysis["punctuation_ratio"]
+    bbox_width = _bbox_width(candidate["bbox"])
+    max_peer_alnum = max(item["analysis"]["alnum_count"] for item in candidates)
+
+    len_factor = min(1.0, max(alnum_count, 1) / 8.0)
+    if alnum_count == 0:
+        len_factor *= 0.05
+    elif alnum_count <= 2:
+        len_factor *= 0.25
+
+    info_factor = 1.0 - min(punctuation_ratio, 0.85) * 0.8
+    if analysis["letter_count"] == 0 and analysis["digit_count"] == 0:
+        info_factor *= 0.2
+
+    coverage_factor = 1.0
+    if bbox_width >= 500 and alnum_count <= 4 and max_peer_alnum >= 8:
+        coverage_factor *= 0.25
+    elif bbox_width >= 300 and alnum_count <= 2 and max_peer_alnum >= 6:
+        coverage_factor *= 0.2
+
+    if (
+        max_peer_alnum >= 8
+        and alnum_count <= 2
+        and punctuation_ratio >= 0.5
+    ):
+        coverage_factor *= 0.1
+
+    script_factor = 1.0
+    candidate_script = analysis["dominant_script"]
+    if trusted_native_script and analysis["letter_count"] >= 3:
+        if candidate_script == trusted_native_script and analysis["dominant_script_ratio"] >= 0.5:
+            script_factor *= 1.35
+        elif candidate_script and candidate_script != trusted_native_script and analysis["letter_count"] >= 6:
+            script_factor *= 0.68
+
+    if group_dominant_script and analysis["letter_count"] >= 3:
+        if candidate_script == group_dominant_script and analysis["dominant_script_ratio"] >= 0.5:
+            script_factor *= 1.2
+        elif candidate_script and candidate_script != group_dominant_script:
+            script_factor *= 0.72
+
+    language_script = LANGUAGE_SCRIPT_MAP.get(candidate["language"])
+    if language_script and group_dominant_script and analysis["letter_count"] >= 3:
+        if language_script == group_dominant_script:
+            script_factor *= 1.08
+        elif candidate_script and candidate_script != language_script:
+            script_factor *= 0.92
+
+    return score * len_factor * info_factor * coverage_factor * script_factor
+
+
+def _select_best_candidate(candidates: list) -> dict:
+    group_dominant_script = _get_group_dominant_script(candidates)
+    trusted_native_script = _get_trusted_native_script(candidates)
+    best_candidate = None
+    best_adjusted_score = -1.0
+
+    for candidate in candidates:
+        candidate["adjusted_score"] = _compute_adjusted_score(
+            candidate,
+            candidates,
+            group_dominant_script,
+            trusted_native_script,
+        )
+        if candidate["adjusted_score"] > best_adjusted_score:
+            best_candidate = candidate
+            best_adjusted_score = candidate["adjusted_score"]
+
+    if best_candidate:
+        logger.info(
+            "融合选择: word=%r lang=%s raw=%.4f adjusted=%.4f dominant_script=%s",
+            best_candidate["word"],
+            best_candidate["language"],
+            float(best_candidate["score"]),
+            best_candidate["adjusted_score"],
+            group_dominant_script,
+        )
+    return best_candidate
 
 def find_best_words_from_groups(data_groups):
     """
@@ -117,16 +322,17 @@ def find_best_words_from_groups(data_groups):
             
             # 如果当前组在这个位置有词
             if word_idx < len(words) and word_idx < len(scores):
+                word = words[word_idx]
                 candidates.append({
-                    "word": words[word_idx],
+                    "word": word,
                     "score": scores[word_idx],
                     "language": language,
-                    "bbox": bboxes[word_idx] if word_idx < len(bboxes) else None
+                    "bbox": bboxes[word_idx] if word_idx < len(bboxes) else None,
+                    "analysis": _analyze_text(word),
                 })
         
-        # 从候选词中选出置信度最高的
         if candidates:
-            best_candidate = max(candidates, key=lambda x: x["score"])
+            best_candidate = _select_best_candidate(candidates)
             best_words.append(best_candidate["word"])
             best_scores.append(best_candidate["score"])
             best_languages.append(best_candidate["language"])
