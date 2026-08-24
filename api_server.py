@@ -1,4 +1,6 @@
 import asyncio
+import cv2
+import io
 import os
 import re
 import time
@@ -6,6 +8,7 @@ import traceback
 import unicodedata
 from typing import List, Optional
 import tempfile
+import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -16,7 +19,7 @@ import sys
 from datetime import datetime
 import uuid
 
-from ocr_engine import ocr_engines
+from ocr_engine import ocr_components
 
 # 配置日志 - 确保在uvicorn启动前配置
 def setup_logging():
@@ -76,23 +79,124 @@ LANGUAGE_SCRIPT_MAP = {
     "zh": "cjk",
 }
 
-async def process_image_async(image_path: str, language: str):
-    """异步处理单张图片"""
+async def process_image_async(text_crops: list[np.ndarray], language: str):
+    """异步处理共享检测后的文本块"""
     try:
         start_time = time.time()
-        result = ocr_engines[language].predict(image_path)
+        result = list(
+            ocr_components["recognizers"][language].predict(
+                text_crops,
+                batch_size=max(1, min(6, len(text_crops))),
+            )
+        )
         end_time = time.time()
         processing_time = end_time - start_time
-        
-        # 格式化时间为可读格式，精确到毫秒
+
         start_time_formatted = datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         end_time_formatted = datetime.fromtimestamp(end_time).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        
+
         logger.info(f"{language}语言模型识别耗时: {processing_time:.4f}秒. star: {start_time_formatted}, end: {end_time_formatted}")
-        return language, result
+        texts = [_to_json_safe(item["rec_text"]) for item in result]
+        scores = [float(_to_json_safe(item["rec_score"])) for item in result]
+        return language, texts, scores
     except Exception as e:
         logger.error(f"{language}语言模型识别失败，错误: {str(e)}")
         raise
+
+
+def _validate_image_bytes(image_data: bytes) -> None:
+    try:
+        with Image.open(io.BytesIO(image_data)) as img:
+            img.verify()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="文件必须是图片格式") from exc
+
+
+def _order_quad_points(points: np.ndarray) -> np.ndarray:
+    rect = np.zeros((4, 2), dtype=np.float32)
+    point_sums = points.sum(axis=1)
+    point_diffs = np.diff(points, axis=1)
+    rect[0] = points[np.argmin(point_sums)]
+    rect[2] = points[np.argmax(point_sums)]
+    rect[1] = points[np.argmin(point_diffs)]
+    rect[3] = points[np.argmax(point_diffs)]
+    return rect
+
+
+def _crop_axis_aligned(image: np.ndarray, polygon: list) -> np.ndarray:
+    left, top, right, bottom = _bbox_bounds(polygon)
+    left = max(int(left), 0)
+    top = max(int(top), 0)
+    right = min(int(right), image.shape[1])
+    bottom = min(int(bottom), image.shape[0])
+    if right <= left or bottom <= top:
+        return image[:1, :1].copy()
+    return image[top:bottom, left:right].copy()
+
+
+def _crop_text_region(image: np.ndarray, polygon: list) -> np.ndarray:
+    points = np.array(polygon, dtype=np.float32)
+    if points.ndim != 2 or points.shape[1] != 2:
+        return _crop_axis_aligned(image, polygon)
+    if points.shape[0] != 4:
+        return _crop_axis_aligned(image, polygon)
+
+    rect = _order_quad_points(points)
+    width_top = np.linalg.norm(rect[1] - rect[0])
+    width_bottom = np.linalg.norm(rect[2] - rect[3])
+    height_right = np.linalg.norm(rect[2] - rect[1])
+    height_left = np.linalg.norm(rect[3] - rect[0])
+
+    crop_width = max(int(round(max(width_top, width_bottom))), 1)
+    crop_height = max(int(round(max(height_right, height_left))), 1)
+
+    dst = np.array(
+        [
+            [0, 0],
+            [crop_width - 1, 0],
+            [crop_width - 1, crop_height - 1],
+            [0, crop_height - 1],
+        ],
+        dtype=np.float32,
+    )
+    transform = cv2.getPerspectiveTransform(rect, dst)
+    crop = cv2.warpPerspective(
+        image,
+        transform,
+        (crop_width, crop_height),
+        borderMode=cv2.BORDER_REPLICATE,
+        flags=cv2.INTER_CUBIC,
+    )
+    if crop_height / max(crop_width, 1) >= 1.5:
+        crop = np.rot90(crop)
+    return crop.copy()
+
+
+def _detect_text_blocks(image_path: str) -> list:
+    start_time = time.time()
+    result = list(ocr_components["detector"].predict(image_path))
+    processing_time = time.time() - start_time
+    logger.info(f"共享检测模型耗时: {processing_time:.4f}秒")
+    result_item = result[0]
+    return _extract_result_boxes(result_item)
+
+
+def _prepare_text_crops(image_path: str) -> tuple[list, list[np.ndarray]]:
+    image = cv2.imread(image_path)
+    if image is None:
+        raise RuntimeError(f"无法读取图片: {image_path}")
+
+    dt_polys = _detect_text_blocks(image_path)
+    text_polys = []
+    text_crops = []
+
+    for polygon in dt_polys:
+        normalized_polygon = _to_json_safe(polygon)
+        crop = _crop_text_region(image, normalized_polygon)
+        text_polys.append(normalized_polygon)
+        text_crops.append(crop)
+
+    return text_polys, text_crops
 
 
 def _detect_char_script(char: str) -> Optional[str]:
@@ -545,13 +649,10 @@ async def ocr_upload_image(
         OCRResponse: OCR识别结果
     """
     
-    # 验证文件类型
-    if not file.content_type.startswith('image/'):
-        raise HTTPException(status_code=400, detail="文件必须是图片格式")
-    
     try:
         # 读取图片文件
         image_data = await file.read()
+        _validate_image_bytes(image_data)
         
         # 生成唯一的文件名，保留原始扩展名
         file_extension = os.path.splitext(file.filename)[1] if file.filename else '.jpg'
@@ -562,30 +663,28 @@ async def ocr_upload_image(
             f.write(image_data)
         
         # 转换为numpy数组
-        # 解析语言参数
         target_languages = None
         if languages:
             target_languages = [lang.strip() for lang in languages.split(',')]
         else:
-            target_languages = list(ocr_engines.keys())
+            target_languages = list(ocr_components["recognizers"].keys())
+        shared_bboxes, text_crops = _prepare_text_crops(file_path)
         tasks = []        
         for language in target_languages:
-            tasks.append(process_image_async(file_path, language))
+            tasks.append(process_image_async(text_crops, language))
         
-        # 等待所有任务完成 - 开始计时
         logger.info(f"开始执行 {len(tasks)} 个异步OCR任务...")
         async_start_time = time.time()
         results = await asyncio.gather(*tasks)
         async_total_time = time.time() - async_start_time
         logger.info(f"所有异步OCR任务完成，总异步耗时: {async_total_time:.4f}秒")
         all_data = []
-        for lang, res in results:
-            result_item = res[0]
+        for lang, texts, scores in results:
             obj = {}
             obj["language"] = lang
-            obj["bbox"] = _extract_result_boxes(result_item)
-            obj["words_result"] = _to_json_safe(result_item["rec_texts"])
-            obj["scores"] = _to_json_safe(result_item["rec_scores"])
+            obj["bbox"] = shared_bboxes
+            obj["words_result"] = texts
+            obj["scores"] = scores
             all_data.append(obj)
         best_data = find_best_words_from_groups(all_data)
         #兼容旧格式
@@ -615,26 +714,28 @@ async def ocr_upload_image(
 
 
 if __name__ == "__main__":
+    host,port,workers,log_level,reload = "0.0.0.0", 8000, 1, "info", True
     logger.info("=" * 50)
     logger.info("启动多语言OCR FastAPI服务...")
-    logger.info(f"可用的OCR引擎: {list(ocr_engines.keys())}")
+    logger.info(f"可用的OCR引擎: {list(ocr_components['recognizers'].keys())}")
     logger.info("服务配置:")
-    logger.info("  - 主机: 0.0.0.0")
-    logger.info("  - 端口: 8000")
-    logger.info("  - 重载模式: 启用")
-    logger.info("  - 日志级别: info")
+    logger.info(f"  - 主机: {host}")
+    logger.info(f"  - 端口: {port}")
+    logger.info(f"  - 工作进程数: {workers}")
+    logger.info(f"  - 重载模式: {'启用' if reload else '禁用'}")
+    logger.info(f"  - 日志级别: {log_level}")
     logger.info("=" * 50)
     
     try:
         uvicorn.run(
-            "api_server:app",
-            host="0.0.0.0",
-            port=80,
-            reload=False,
-            log_level="info",
+            app,
+            host=host,
+            port=port,
+            reload=reload,
+            log_level=log_level,
             access_log=True,
             use_colors=True,
-            workers=1
+            workers=workers
         )
     except Exception as e:
         logger.error(f"服务启动失败: {str(e)}")
