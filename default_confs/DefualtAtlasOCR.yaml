@@ -38,4 +38,4 @@ SubModules:
 pipeline_name: OCR
 text_type: general
 use_doc_preprocessor: false
-use_textline_orientation: false pip 
+use_textline_orientation: false
