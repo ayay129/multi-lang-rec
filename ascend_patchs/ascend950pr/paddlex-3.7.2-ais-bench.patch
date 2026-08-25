@@ -19,18 +19,15 @@ index 072658947..b8b98840b 100644
          def runner_builder(
              *,
              model_name: str,
-@@ -112,6 +115,14 @@ class PaddleStaticEngine(RunnerEngine):
+@@ -112,6 +115,11 @@ class PaddleStaticEngine(RunnerEngine):
              del default_builder
              if model_dir is None:
                  raise ValueError("`model_dir` is required for engine='paddle_static'.")
 +            if os.getenv("PADDLEX_USE_AIS_BENCH") == "1":
-+                if model_dir is None:
-+                    raise ValueError("`model_dir` is required for ais_bench.")
-+    
-+            return AisBenchRunner(
-+                model_dir=model_dir,
-+                device_id=engine_config.get("device_id", 0),
-+            )
++                return AisBenchRunner(
++                    model_dir=model_dir,
++                    device_id=engine_config.get("device_id", 0),
++                )
              runner_config = _inject_trt_info(model_config, dict(engine_config))
              return PaddleStaticRunner(
                  model_name=model_name,
@@ -66,7 +63,7 @@ new file mode 100644
 index 000000000..5b7d1e6d5
 --- /dev/null
 +++ b/paddlex/inference/models/runners/ais_bench_runner.py
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,72 @@
 +import os
 +from pathlib import Path
 +import acl
@@ -83,11 +80,28 @@ index 000000000..5b7d1e6d5
 +    "x86_64": "x86_64",
 +}
 +
++ACL_ERROR_REPEAT_INITIALIZE = 100002
++
++
++def _get_soc_version():
++    configured = os.getenv("ASCEND_SOC_VERSION")
++    if configured:
++        return configured
++
++    ret = acl.init()
++    if ret not in (0, ACL_ERROR_REPEAT_INITIALIZE):
++        raise RuntimeError(f"acl.init failed with error code {ret}")
++
++    soc_version = acl.get_soc_name()
++    if not soc_version:
++        raise RuntimeError("Failed to detect Ascend SoC version")
++    return soc_version
++
 +
 +class AisBenchRunner(InferenceRunner):
 +    def __init__(self, model_dir, device_id=0):
 +        from ais_bench.infer.interface import InferSession
-+        soc_version = acl.get_soc_name()
++        soc_version = _get_soc_version()
 +        arch = ARCH_ALIASES.get(platform.machine().lower(), platform.machine().lower())
 +
 +        self.model_path = Path(model_dir) / f"inference-{soc_version}_{arch}.om"

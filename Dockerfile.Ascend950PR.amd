@@ -31,7 +31,7 @@ RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi
     pip install --no-cache-dir ".[base]" && \
     cd /app && \
     rm -rf /opt/build/PaddleX && \
-    pip install --no-cache-dir -r /app/requirements.Ascend950PR.txt && \
+    pip install --no-cache-dir -r /app/requirements.Ascend950PR.txt
 
 
 
