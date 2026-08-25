@@ -16,11 +16,6 @@ ENV PATH="/opt/py310/bin:$PATH"
 
 # PaddlePaddle
 RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi/simple && \
-    # git clone --depth 1 \
-    # --branch release/3.7 \
-    # https://github.com/PaddlePaddle/PaddleX.git /PaddleX && \
-    # cd /PaddleX && \
-    #pip install --no-cache-dir ".[base]" && \
     pip download \
         --no-deps \
         --no-binary=paddlex \
@@ -28,13 +23,17 @@ RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi
         -d /opt/build/PaddleX && \
     tar -xzf /opt/build/PaddleX/paddlex-3.7.2.tar.gz -C /opt/build/PaddleX && \
     cd /opt/build/PaddleX/paddlex-3.7.2 && \
-    git apply --check /app/ascend_patchs/paddlex3.7.2/paddlex-3.7.2-ais-bench.patch && \
-    git apply /app/ascend_patchs/paddlex3.7.2/paddlex-3.7.2-ais-bench.patch && \
+    git apply --check /app/ascend_patchs/ascend950pr/paddlex-3.7.2-ais-bench.patch && \
+    git apply /app/ascend_patchs/ascend950pr/paddlex-3.7.2-ais-bench.patch && \
     pip install --no-cache-dir ".[base]" && \
+    cd /app && \
     rm -rf /opt/build/PaddleX && \
     pip install --no-cache-dir paddlepaddle==3.0.0 && \
-    pip install --no-cache-dir paddle-custom-npu==3.0.0 && \
-    pip install --no-cache-dir -r /app/requirements.Ascend950PR.txt
+    pip install --no-cache-dir -r /app/requirements.Ascend950PR.txt && \
+    pip install --no-cache-dir /app/ascend_patchs/ascend950pr/*whl && \
+    pip install --no-cache-dir /app/ascend_patchs/common/*whl && \
+
+
 
 # Paddle -> ONNX
 WORKDIR /app
