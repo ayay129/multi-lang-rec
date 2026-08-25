@@ -26,12 +26,12 @@ RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi
     git apply --check /app/ascend_patchs/ascend950pr/paddlex-3.7.2-ais-bench.patch && \
     git apply /app/ascend_patchs/ascend950pr/paddlex-3.7.2-ais-bench.patch && \
     pip install --no-cache-dir ".[base]" && \
-    cd /app && \
-    rm -rf /opt/build/PaddleX && \
     pip install --no-cache-dir paddlepaddle==3.0.0 && \
     pip install --no-cache-dir -r /app/requirements.Ascend950PR.txt && \
     pip install --no-cache-dir /app/ascend_patchs/ascend950pr/*whl && \
     pip install --no-cache-dir /app/ascend_patchs/common/*whl && \
+    cd /app && \
+    rm -rf /opt/build/PaddleX && \
 
 
 
