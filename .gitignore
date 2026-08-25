@@ -42,3 +42,4 @@ logs/
 *.tmp
 *.temp
 ~*
+/models/
