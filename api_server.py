@@ -743,7 +743,7 @@ async def ocr_upload_image(
 
 
 if __name__ == "__main__":
-    host,port,workers,log_level,reload = "0.0.0.0", 8000, 1, "info", True
+    host,port,workers,log_level,reload = "0.0.0.0", 8000, 1, "info", False
     logger.info("=" * 50)
     logger.info("启动多语言OCR FastAPI服务...")
     logger.info(f"可用的OCR引擎: {list(ocr_components['recognizers'].keys())}")
