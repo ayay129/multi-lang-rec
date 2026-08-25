@@ -3,12 +3,7 @@ import os
 from typing import Dict
 
 import yaml
-from paddleocr import (
-    DocPreprocessor,
-    TextDetection,
-    TextLineOrientationClassification,
-    TextRecognition,
-)
+from paddlex import create_pipeline, create_predictor
 
 
 base_dir = os.path.dirname(__file__)
@@ -61,11 +56,11 @@ def _create_doc_preprocessor(config: dict):
     for model_config in doc_config.get("SubModules", {}).values():
         model_config["model_dir"] = _resolve_model_dir(model_config.get("model_dir"))
 
-    kwargs = {"paddlex_config": doc_config}
+    kwargs = {"config": doc_config}
     device = os.getenv("OCR_DEVICE")
     if device:
         kwargs["device"] = device
-    return DocPreprocessor(**kwargs)
+    return create_pipeline(**kwargs)
 
 
 def init_models() -> Dict[str, object]:
@@ -77,7 +72,7 @@ def init_models() -> Dict[str, object]:
     model_root = _resolve_model_dir(model_config["model_dir"])
     det_name = model_config["detection"]["model_name"]
     det_config = submodules["TextDetection"]
-    detector = TextDetection(
+    detector = create_predictor(
         **_model_kwargs(det_name, os.path.join(model_root, det_name)),
         **{
             key: det_config.get(key)
@@ -94,7 +89,7 @@ def init_models() -> Dict[str, object]:
     textline_config = submodules.get("TextLineOrientation", {})
     textline_orientation = None
     if pipeline_config.get("use_textline_orientation", False):
-        textline_orientation = TextLineOrientationClassification(
+        textline_orientation = create_predictor(
             **_model_kwargs(
                 textline_config["model_name"],
                 textline_config.get("model_dir"),
@@ -104,7 +99,7 @@ def init_models() -> Dict[str, object]:
     recognizers = {}
     for lang, rec in model_config["recognition"].items():
         rec_model_name = rec["model_name"]
-        recognizers[lang] = TextRecognition(
+        recognizers[lang] = create_predictor(
             **_model_kwargs(rec_model_name, os.path.join(model_root, rec_model_name))
         )
 

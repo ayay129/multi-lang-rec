@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Paddle and patched PaddleX are provided by the Ascend runtime image.
+numpy==1.26.4
+opencv-python==3.4.18.65

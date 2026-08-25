@@ -196,7 +196,7 @@ def _prepare_text_crops(image_path: str) -> tuple[list, list[np.ndarray]]:
     doc_preprocessor = ocr_components["doc_preprocessor"]
     if doc_preprocessor is not None:
         start_time = time.time()
-        image = doc_preprocessor.predict(image)[0]["output_img"]
+        image = next(iter(doc_preprocessor.predict(image)))["output_img"]
         logger.info("共享文档预处理耗时: %.4f秒", time.time() - start_time)
 
     dt_polys = _detect_text_blocks(image)

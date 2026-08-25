@@ -347,9 +347,9 @@ dependencies = [
     { name = "modelscope" },
     { name = "networkx" },
     { name = "numpy" },
+    { name = "opencv-contrib-python" },
     { name = "opt-einsum" },
     { name = "packaging" },
-    { name = "paddleocr" },
     { name = "paddlepaddle" },
     { name = "paddlex" },
     { name = "pandas" },
@@ -417,9 +417,9 @@ requires-dist = [
     { name = "modelscope", specifier = "==1.30.0" },
     { name = "networkx", specifier = "==3.4.2" },
     { name = "numpy", specifier = "==1.24.3" },
+    { name = "opencv-contrib-python", specifier = "==4.10.0.84" },
     { name = "opt-einsum", specifier = "==3.3.0" },
     { name = "packaging", specifier = "==25.0" },
-    { name = "paddleocr", specifier = "==3.2.0" },
     { name = "paddlepaddle", specifier = "==3.2.0" },
     { name = "paddlex", specifier = "==3.2.0" },
     { name = "pandas", specifier = "==2.3.3" },
@@ -521,20 +521,6 @@ wheels = [
 ]
 
 [[package]]
-name = "paddleocr"
-version = "3.2.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "paddlex", extra = ["ocr-core"] },
-    { name = "pyyaml" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/84/c9/2abb5aa6c3dc7e67e4e9f5d5a4b5352d51092b3fcdd2ae06f7e4c3886ee1/paddleocr-3.2.0.tar.gz", hash = "sha256:72f6a1844808003123cebe1b5a9a73302cc394185d948e865ccf104e3d93bc19", size = 2394507, upload-time = "2025-08-21T11:11:38.425Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/74/72/c8218cc7489762ab3d1fb25721f8c928f10085e38feb8d52fd6583bfc592/paddleocr-3.2.0-py3-none-any.whl", hash = "sha256:2b942295ad5963de8e01d68afb15a9507d713bc7299e2dfeb198d9c3ac5cf76f", size = 75976, upload-time = "2025-08-21T11:11:37.037Z" },
-]
-
-[[package]]
 name = "paddlepaddle"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -582,15 +568,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/81/cd/0276c441b46833b458076890d7f8d76dd53e12f0b548b45ddc9221805223/paddlex-3.2.0.tar.gz", hash = "sha256:49e2991fc918fe74203fb7e1e17ad7e92eaf8f4d6419a87db1f9c6af5930c58e", size = 917586, upload-time = "2025-08-20T06:51:29.262Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cf/a4/9025a55cc9d9cb0239be52dd7cd88c4f3a4cb3fb6a8df98b59096c657a87/paddlex-3.2.0-py3-none-any.whl", hash = "sha256:f93a23836ae96042688403b16f7213611994f1e47367576c4972b4f3e48a046a", size = 1702045, upload-time = "2025-08-20T06:51:26.195Z" },
-]
-
-[package.optional-dependencies]
-ocr-core = [
-    { name = "imagesize" },
-    { name = "opencv-contrib-python" },
-    { name = "pyclipper" },
-    { name = "pypdfium2" },
-    { name = "shapely" },
 ]
 
 [[package]]

@@ -220,8 +220,8 @@ gunicorn api_server:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:80
 FROM python:3.8-slim
 
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY requirements*.txt ./
+RUN pip install -r requirements.nvidia.txt
 
 COPY . .
 EXPOSE 80
@@ -248,4 +248,3 @@ CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "80", "--worker
 - 可以调整置信度融合算法
 - 支持自定义检测和识别模型
 - 易于集成到现有的文档处理流程中
-

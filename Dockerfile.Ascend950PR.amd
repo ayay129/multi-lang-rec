@@ -1,0 +1,30 @@
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-910-ubuntu22.04-py3.12-devel
+RUN sed -i 's@http://archive.ubuntu.com/ubuntu/@https://repo.huaweicloud.com/ubuntu/@g' /etc/apt/sources.list && \
+    sed -i 's@http://security.ubuntu.com/ubuntu/@https://repo.huaweicloud.com/ubuntu/@g' /etc/apt/sources.list && \
+     apt-get update && \
+     apt-get install -y libgl1 libglib2.0-0 libgomp1 \
+     apt-get install -y \
+        python3.10 \
+        python3.10-dev \
+        python3.10-venv \
+        python3-pip && \
+        /usr/bin/python3.10 -m venv /opt/py310
+COPY . /app
+ENV PATH="/opt/py310/bin:$PATH"
+RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi/simple && \
+    pip install --upgrade pip setuptools wheel
+
+# PaddlePaddle
+RUN pip install --no-cache-dir paddlepaddle==3.0.0
+
+RUN git clone --depth 1 \
+    --branch release/3.7 \
+    https://github.com/PaddlePaddle/PaddleX.git /tmp/PaddleX && \
+    cd /tmp/PaddleX && \
+    pip install --no-cache-dir ".[base]" && \
+    rm -rf /tmp/PaddleX
+
+# Paddle -> ONNX
+# RUN paddlex --install paddle2onnx
+WORKDIR /app
+CMD ["python","api_server.py"]
