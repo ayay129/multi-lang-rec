@@ -83,10 +83,15 @@ async def process_image_async(text_crops: list[np.ndarray], language: str):
     """异步处理共享检测后的文本块"""
     try:
         start_time = time.time()
+        if not text_crops:
+            return language, [], []
         result = list(
             ocr_components["recognizers"][language].predict(
                 text_crops,
-                batch_size=max(1, min(6, len(text_crops))),
+                batch_size=max(
+                    1,
+                    min(ocr_components["rec_batch_size"], len(text_crops)),
+                ),
             )
         )
         end_time = time.time()
@@ -98,6 +103,8 @@ async def process_image_async(text_crops: list[np.ndarray], language: str):
         logger.info(f"{language}语言模型识别耗时: {processing_time:.4f}秒. star: {start_time_formatted}, end: {end_time_formatted}")
         texts = [_to_json_safe(item["rec_text"]) for item in result]
         scores = [float(_to_json_safe(item["rec_score"])) for item in result]
+        score_thresh = ocr_components["rec_score_thresh"]
+        texts = [text if score >= score_thresh else "" for text, score in zip(texts, scores)]
         return language, texts, scores
     except Exception as e:
         logger.error(f"{language}语言模型识别失败，错误: {str(e)}")
@@ -172,9 +179,9 @@ def _crop_text_region(image: np.ndarray, polygon: list) -> np.ndarray:
     return crop.copy()
 
 
-def _detect_text_blocks(image_path: str) -> list:
+def _detect_text_blocks(image: np.ndarray) -> list:
     start_time = time.time()
-    result = list(ocr_components["detector"].predict(image_path))
+    result = list(ocr_components["detector"].predict(image, batch_size=1))
     processing_time = time.time() - start_time
     logger.info(f"共享检测模型耗时: {processing_time:.4f}秒")
     result_item = result[0]
@@ -186,7 +193,13 @@ def _prepare_text_crops(image_path: str) -> tuple[list, list[np.ndarray]]:
     if image is None:
         raise RuntimeError(f"无法读取图片: {image_path}")
 
-    dt_polys = _detect_text_blocks(image_path)
+    doc_preprocessor = ocr_components["doc_preprocessor"]
+    if doc_preprocessor is not None:
+        start_time = time.time()
+        image = doc_preprocessor.predict(image)[0]["output_img"]
+        logger.info("共享文档预处理耗时: %.4f秒", time.time() - start_time)
+
+    dt_polys = _detect_text_blocks(image)
     text_polys = []
     text_crops = []
 
@@ -195,6 +208,22 @@ def _prepare_text_crops(image_path: str) -> tuple[list, list[np.ndarray]]:
         crop = _crop_text_region(image, normalized_polygon)
         text_polys.append(normalized_polygon)
         text_crops.append(crop)
+
+    textline_orientation = ocr_components["textline_orientation"]
+    if textline_orientation is not None and text_crops:
+        start_time = time.time()
+        orientation_results = textline_orientation.predict(
+            text_crops,
+            batch_size=max(
+                1,
+                min(ocr_components["textline_batch_size"], len(text_crops)),
+            ),
+        )
+        for index, result in enumerate(orientation_results):
+            labels = _to_json_safe(result["label_names"])
+            if labels and str(labels[0]).startswith("180"):
+                text_crops[index] = np.rot90(text_crops[index], 2).copy()
+        logger.info("共享文本行方向识别耗时: %.4f秒", time.time() - start_time)
 
     return text_polys, text_crops
 
@@ -718,6 +747,7 @@ if __name__ == "__main__":
     logger.info("=" * 50)
     logger.info("启动多语言OCR FastAPI服务...")
     logger.info(f"可用的OCR引擎: {list(ocr_components['recognizers'].keys())}")
+    logger.info(f"Pipeline配置: {ocr_components['pipeline_config_path']}")
     logger.info("服务配置:")
     logger.info(f"  - 主机: {host}")
     logger.info(f"  - 端口: {port}")
