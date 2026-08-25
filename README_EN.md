@@ -59,9 +59,6 @@ model_dir: models
 
 Each recognition model is optimized for specific languages and can provide the best recognition performance for that language.
 
-### Configuration Generation Mechanism
-The system automatically generates runtime configuration files in the `running_confs/` directory based on the configuration, with each language corresponding to a configuration file (such as `en.yaml`, `ar.yaml`, `fr.yaml`), ensuring each OCR engine uses the correct model combination.
-
 ## Workflow Details
 
 ### 1. Image Preprocessing

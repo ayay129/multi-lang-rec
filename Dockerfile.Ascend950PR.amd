@@ -10,21 +10,22 @@ RUN sed -i 's@http://archive.ubuntu.com/ubuntu/@https://repo.huaweicloud.com/ubu
         python3-pip && \
         /usr/bin/python3.10 -m venv /opt/py310
 COPY . /app
+# 拷贝编译好的模型文件
+# COPY models /app/models
 ENV PATH="/opt/py310/bin:$PATH"
-RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi/simple && \
-    pip install --upgrade pip setuptools wheel
 
 # PaddlePaddle
-RUN pip install --no-cache-dir paddlepaddle==3.0.0
-
-RUN git clone --depth 1 \
+RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi/simple && \
+    git clone --depth 1 \
     --branch release/3.7 \
-    https://github.com/PaddlePaddle/PaddleX.git /tmp/PaddleX && \
-    cd /tmp/PaddleX && \
+    https://github.com/PaddlePaddle/PaddleX.git /PaddleX && \
+    cd /PaddleX && \
     pip install --no-cache-dir ".[base]" && \
-    rm -rf /tmp/PaddleX
+    git apply --directory=/PaddleX /app/ascend_patchs/paddlex3.7.2/paddlex-3.7.2-ais-bench.patch && \
+    pip install --no-cache-dir paddlepaddle==3.0.0 && \
+    pip install --no-cache-dir paddle-custom-npu==3.0.0 && \
+    pip install --no-cache-dir -r /app/requirements.Ascend950PR.txt
 
 # Paddle -> ONNX
-# RUN paddlex --install paddle2onnx
 WORKDIR /app
 CMD ["python","api_server.py"]
