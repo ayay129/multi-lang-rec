@@ -1,0 +1,124 @@
+diff --git a/paddlex/inference/models/engines/paddle.py b/paddlex/inference/models/engines/paddle.py
+index 072658947..b8b98840b 100644
+--- a/paddlex/inference/models/engines/paddle.py
++++ b/paddlex/inference/models/engines/paddle.py
+@@ -12,6 +12,8 @@
+ # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
++import os
++from ..runners import AisBenchRunner, PaddleDynamicRunner, PaddleStaticRunner
+ 
+ """Paddle engines."""
+ from pathlib import Path
+@@ -101,6 +103,7 @@ class PaddleStaticEngine(RunnerEngine):
+             )
+ 
+     def get_default_runner_builder(self) -> RunnerBuilder:
++
+         def runner_builder(
+             *,
+             model_name: str,
+@@ -112,6 +115,14 @@ class PaddleStaticEngine(RunnerEngine):
+             del default_builder
+             if model_dir is None:
+                 raise ValueError("`model_dir` is required for engine='paddle_static'.")
++            if os.getenv("PADDLEX_USE_AIS_BENCH") == "1":
++                if model_dir is None:
++                    raise ValueError("`model_dir` is required for ais_bench.")
++    
++            return AisBenchRunner(
++                model_dir=model_dir,
++                device_id=engine_config.get("device_id", 0),
++            )
+             runner_config = _inject_trt_info(model_config, dict(engine_config))
+             return PaddleStaticRunner(
+                 model_name=model_name,
+@@ -123,7 +134,7 @@ class PaddleStaticEngine(RunnerEngine):
+         return runner_builder
+ 
+     def validate_runner(self, runner: InferenceRunner) -> None:
+-        if not isinstance(runner, PaddleStaticRunner):
++        if not isinstance(runner, (PaddleStaticRunner,AisBenchRunner)):
+             raise TypeError(
+                 "Engine 'paddle_static' must build a PaddleStaticRunner, "
+                 f"but got {type(runner).__name__}."
+diff --git a/paddlex/inference/models/runners/__init__.py b/paddlex/inference/models/runners/__init__.py
+index 0b03f8ada..67864f61c 100644
+--- a/paddlex/inference/models/runners/__init__.py
++++ b/paddlex/inference/models/runners/__init__.py
+@@ -12,6 +12,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ 
++from .ais_bench_runner import AisBenchRunner
+ from .hpi import HPIRunner
+ from .inference_runner import InferenceRunner
+ from .onnxruntime_runner import ONNXRuntimeRunner, ONNXRuntimeRunnerConfig
+@@ -39,4 +40,5 @@ __all__ = [
+     "resolve_paddle_runner_device",
+     "PaddleStaticRunner",
+     "PaddleStaticRunnerConfig",
++    "AisBenchRunner"
+ ]
+diff --git a/paddlex/inference/models/runners/ais_bench_runner.py b/paddlex/inference/models/runners/ais_bench_runner.py
+new file mode 100644
+index 000000000..5b7d1e6d5
+--- /dev/null
++++ b/paddlex/inference/models/runners/ais_bench_runner.py
+@@ -0,0 +1,55 @@
++import os
++from pathlib import Path
++import acl
++import platform
++
++import numpy as np
++
++from .inference_runner import InferenceRunner
++
++ARCH_ALIASES = {
++    "arm64": "aarch64",
++    "aarch64": "aarch64",
++    "amd64": "x86_64",
++    "x86_64": "x86_64",
++}
++
++
++class AisBenchRunner(InferenceRunner):
++    def __init__(self, model_dir, device_id=0):
++        from ais_bench.infer.interface import InferSession
++        soc_version = acl.get_soc_name()
++        arch = ARCH_ALIASES.get(platform.machine().lower(), platform.machine().lower())
++
++        self.model_path = Path(model_dir) / f"inference-{soc_version}_{arch}.om"
++        if not self.model_path.is_file():
++            raise FileNotFoundError(f"OM model not found: {self.model_path}")
++
++        self.session = InferSession(
++            device_id=device_id,
++            model_path=str(self.model_path),
++        )
++        self.output_size = int(
++            os.getenv("AIS_BENCH_OUTPUT_SIZE", "100000000")
++        )
++
++    def __call__(self, x=None, **kwargs):
++        if x is None:
++            x = kwargs.get("x")
++        if x is None:
++            raise TypeError("AisBenchRunner requires input `x`")
++
++        if isinstance(x, np.ndarray):
++            x = [x]
++
++        feeds = [np.ascontiguousarray(item) for item in x]
++        return self.session.infer(
++            feeds=feeds,
++            mode="dymshape",
++            custom_sizes=self.output_size,
++        )
++
++    def close(self):
++        close = getattr(self.session, "close", None)
++        if callable(close):
++            close()
