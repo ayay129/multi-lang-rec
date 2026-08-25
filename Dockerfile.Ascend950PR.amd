@@ -1,8 +1,8 @@
-FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-910-ubuntu22.04-py3.12-devel
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:9.1.0-950-ubuntu22.04-py3.12 
 RUN sed -i 's@http://archive.ubuntu.com/ubuntu/@https://repo.huaweicloud.com/ubuntu/@g' /etc/apt/sources.list && \
     sed -i 's@http://security.ubuntu.com/ubuntu/@https://repo.huaweicloud.com/ubuntu/@g' /etc/apt/sources.list && \
      apt-get update && \
-     apt-get install -y libgl1 libglib2.0-0 libgomp1 \
+     apt-get install -y libgl1 libglib2.0-0 libgomp1 && \
      apt-get install -y \
         python3.10 \
         python3.10-dev \
@@ -16,12 +16,22 @@ ENV PATH="/opt/py310/bin:$PATH"
 
 # PaddlePaddle
 RUN pip config set global.index-url https://repo.huaweicloud.com/repository/pypi/simple && \
-    git clone --depth 1 \
-    --branch release/3.7 \
-    https://github.com/PaddlePaddle/PaddleX.git /PaddleX && \
-    cd /PaddleX && \
+    # git clone --depth 1 \
+    # --branch release/3.7 \
+    # https://github.com/PaddlePaddle/PaddleX.git /PaddleX && \
+    # cd /PaddleX && \
+    #pip install --no-cache-dir ".[base]" && \
+    pip download \
+        --no-deps \
+        --no-binary=paddlex \
+        paddlex==3.7.2 \
+        -d /opt/build/PaddleX && \
+    tar -xzf /opt/build/PaddleX/paddlex-3.7.2.tar.gz -C /opt/build/PaddleX && \
+    cd /opt/build/PaddleX/paddlex-3.7.2 && \
+    git apply --check /app/ascend_patchs/paddlex3.7.2/paddlex-3.7.2-ais-bench.patch && \
+    git apply /app/ascend_patchs/paddlex3.7.2/paddlex-3.7.2-ais-bench.patch && \
     pip install --no-cache-dir ".[base]" && \
-    git apply --directory=/PaddleX /app/ascend_patchs/paddlex3.7.2/paddlex-3.7.2-ais-bench.patch && \
+    rm -rf /opt/build/PaddleX && \
     pip install --no-cache-dir paddlepaddle==3.0.0 && \
     pip install --no-cache-dir paddle-custom-npu==3.0.0 && \
     pip install --no-cache-dir -r /app/requirements.Ascend950PR.txt

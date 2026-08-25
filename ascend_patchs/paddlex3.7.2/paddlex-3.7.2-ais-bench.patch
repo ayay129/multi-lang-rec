@@ -24,10 +24,13 @@ index 072658947..b8b98840b 100644
              if model_dir is None:
                  raise ValueError("`model_dir` is required for engine='paddle_static'.")
 +            if os.getenv("PADDLEX_USE_AIS_BENCH") == "1":
-+                return AisBenchRunner(
-+                    model_dir=model_dir,
-+                    device_id=engine_config.get("device_id", 0),
-+                )
++                if model_dir is None:
++                    raise ValueError("`model_dir` is required for ais_bench.")
++    
++            return AisBenchRunner(
++                model_dir=model_dir,
++                device_id=engine_config.get("device_id", 0),
++            )
              runner_config = _inject_trt_info(model_config, dict(engine_config))
              return PaddleStaticRunner(
                  model_name=model_name,
@@ -60,23 +63,34 @@ index 0b03f8ada..67864f61c 100644
  ]
 diff --git a/paddlex/inference/models/runners/ais_bench_runner.py b/paddlex/inference/models/runners/ais_bench_runner.py
 new file mode 100644
-index 000000000..80ba9f9ff
+index 000000000..5b7d1e6d5
 --- /dev/null
 +++ b/paddlex/inference/models/runners/ais_bench_runner.py
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,55 @@
 +import os
 +from pathlib import Path
++import acl
++import platform
 +
 +import numpy as np
 +
 +from .inference_runner import InferenceRunner
 +
++ARCH_ALIASES = {
++    "arm64": "aarch64",
++    "aarch64": "aarch64",
++    "amd64": "x86_64",
++    "x86_64": "x86_64",
++}
++
 +
 +class AisBenchRunner(InferenceRunner):
 +    def __init__(self, model_dir, device_id=0):
 +        from ais_bench.infer.interface import InferSession
++        soc_version = acl.get_soc_name()
++        arch = ARCH_ALIASES.get(platform.machine().lower(), platform.machine().lower())
 +
-+        self.model_path = Path(model_dir) / "inference.om"
++        self.model_path = Path(model_dir) / f"inference-{soc_version}_{arch}.om"
 +        if not self.model_path.is_file():
 +            raise FileNotFoundError(f"OM model not found: {self.model_path}")
 +
