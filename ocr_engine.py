@@ -97,11 +97,14 @@ def init_models() -> Dict[str, object]:
         )
 
     recognizers = {}
+    recognizers_by_model = {}
     for lang, rec in model_config["recognition"].items():
         rec_model_name = rec["model_name"]
-        recognizers[lang] = create_predictor(
-            **_model_kwargs(rec_model_name, os.path.join(model_root, rec_model_name))
-        )
+        if rec_model_name not in recognizers_by_model:
+            recognizers_by_model[rec_model_name] = create_predictor(
+                **_model_kwargs(rec_model_name, os.path.join(model_root, rec_model_name))
+            )
+        recognizers[lang] = recognizers_by_model[rec_model_name]
 
     rec_config = submodules["TextRecognition"]
     return {

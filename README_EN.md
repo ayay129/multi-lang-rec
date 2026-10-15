@@ -42,6 +42,10 @@ recognition:
     model_name: en_PP-OCRv5_mobile_rec
   ar:
     model_name: arabic_PP-OCRv3_mobile_rec
+  ru:
+    model_name: cyrillic_PP-OCRv5_mobile_rec
+  ky:
+    model_name: cyrillic_PP-OCRv5_mobile_rec
 model_dir: models
 ```
 
@@ -56,6 +60,7 @@ model_dir: models
 - **French Model**: `latin_PP-OCRv5_mobile_rec` - Specially optimized for Latin character recognition
 - **English Model**: `en_PP-OCRv5_mobile_rec` - Recognition model optimized for English text
 - **Arabic Model**: `arabic_PP-OCRv3_mobile_rec` - Specialized for Arabic text recognition
+- **Russian and Kyrgyz Model**: `cyrillic_PP-OCRv5_mobile_rec` - Shared Cyrillic recognizer, selectable with `languages=ru` or `languages=ky`
 
 Each recognition model is optimized for specific languages and can provide the best recognition performance for that language.
 

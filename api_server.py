@@ -76,6 +76,7 @@ LANGUAGE_SCRIPT_MAP = {
     "en": "latin",
     "fr": "latin",
     "ru": "cyrillic",
+    "ky": "cyrillic",
     "zh": "cjk",
 }
 
@@ -697,6 +698,14 @@ async def ocr_upload_image(
             target_languages = [lang.strip() for lang in languages.split(',')]
         else:
             target_languages = list(ocr_components["recognizers"].keys())
+        seen_predictors = set()
+        unique_languages = []
+        for language in target_languages:
+            predictor_id = id(ocr_components["recognizers"][language])
+            if predictor_id not in seen_predictors:
+                seen_predictors.add(predictor_id)
+                unique_languages.append(language)
+        target_languages = unique_languages
         shared_bboxes, text_crops = _prepare_text_crops(file_path)
         tasks = []        
         for language in target_languages:

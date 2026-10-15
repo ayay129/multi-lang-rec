@@ -10,9 +10,13 @@ RUN apt-get clean && \
         libglib2.0-0 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /var/cache/apt/archives/partial/* && \
+    mkdir -p models/cyrillic_PP-OCRv5_mobile_rec && \
+    python -c "import urllib.request; urllib.request.urlretrieve('https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/cyrillic_PP-OCRv5_mobile_rec_infer.tar', '/tmp/cyrillic_PP-OCRv5_mobile_rec.tar')" && \
+    tar -xzf /tmp/cyrillic_PP-OCRv5_mobile_rec.tar --strip-components=1 -C models/cyrillic_PP-OCRv5_mobile_rec && \
+    rm /tmp/cyrillic_PP-OCRv5_mobile_rec.tar && \
     python -m pip install --no-cache-dir \
         -r requirements.txt \
         numpy==1.24.3 \
         opencv-contrib-python==4.10.0.84 \
-        paddlex==3.2.0
+        paddlex==3.3.0
 CMD ["python","api_server.py"]

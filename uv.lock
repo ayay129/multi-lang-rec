@@ -421,7 +421,7 @@ requires-dist = [
     { name = "opt-einsum", specifier = "==3.3.0" },
     { name = "packaging", specifier = "==25.0" },
     { name = "paddlepaddle", specifier = "==3.2.0" },
-    { name = "paddlex", specifier = "==3.2.0" },
+    { name = "paddlex", specifier = "==3.3.0" },
     { name = "pandas", specifier = "==2.3.3" },
     { name = "pillow", specifier = "==10.1.0" },
     { name = "prettytable", specifier = "==3.16.0" },
@@ -543,7 +543,7 @@ wheels = [
 
 [[package]]
 name = "paddlex"
-version = "3.2.0"
+version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aistudio-sdk" },
@@ -565,9 +565,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "ujson" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/cd/0276c441b46833b458076890d7f8d76dd53e12f0b548b45ddc9221805223/paddlex-3.2.0.tar.gz", hash = "sha256:49e2991fc918fe74203fb7e1e17ad7e92eaf8f4d6419a87db1f9c6af5930c58e", size = 917586, upload-time = "2025-08-20T06:51:29.262Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/4b/815b1a83a4c5671d0e6047249e9b0418c3de6d515f58f7ebc44113323ff0/paddlex-3.3.0.tar.gz", hash = "sha256:c6d96746ddde7b74c9efcaeccd7492dadaa0731af9295dc6706014161026b1fe", size = 3864838, upload-time = "2025-10-16T07:03:46.02Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/a4/9025a55cc9d9cb0239be52dd7cd88c4f3a4cb3fb6a8df98b59096c657a87/paddlex-3.2.0-py3-none-any.whl", hash = "sha256:f93a23836ae96042688403b16f7213611994f1e47367576c4972b4f3e48a046a", size = 1702045, upload-time = "2025-08-20T06:51:26.195Z" },
+    { url = "https://files.pythonhosted.org/packages/22/7c/8096b3991aeaa13ea35c26fe40a27d60406646a785a0a543ae3b20cb4436/paddlex-3.3.0-py3-none-any.whl", hash = "sha256:7c8693f75f32dcaf984b722a6840b6e3a06614b1775d2876bfcede720d3e8dfc", size = 1840074, upload-time = "2025-10-16T07:03:39.981Z" },
 ]
 
 [[package]]

@@ -42,6 +42,10 @@ recognition:
     model_name: en_PP-OCRv5_mobile_rec
   ar:
     model_name: arabic_PP-OCRv3_mobile_rec
+  ru:
+    model_name: cyrillic_PP-OCRv5_mobile_rec
+  ky:
+    model_name: cyrillic_PP-OCRv5_mobile_rec
 model_dir: models
 ```
 
@@ -56,6 +60,7 @@ model_dir: models
 - **法语模型**: `latin_PP-OCRv5_mobile_rec` - 专门优化拉丁字符识别
 - **英语模型**: `en_PP-OCRv5_mobile_rec` - 针对英语文本优化的识别模型
 - **阿拉伯语模型**: `arabic_PP-OCRv3_mobile_rec` - 专门处理阿拉伯文字的识别模型
+- **俄语、吉尔吉斯语模型**: `cyrillic_PP-OCRv5_mobile_rec` - 共用西里尔字母识别模型，可通过 `languages=ru` 或 `languages=ky` 指定
 
 每个识别模型都针对特定语言进行了优化，能够提供该语言的最佳识别效果。
 
